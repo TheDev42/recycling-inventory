@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+# The database holds your inventory and your eBay keys/tokens
+inventory.db
+inventory.db-journal

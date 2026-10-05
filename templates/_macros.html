@@ -1,0 +1,21 @@
+{% macro status_badge(item) %}
+  <span class="badge st-{{ item.status }}">{{ STATUSES[item.status] }}</span>
+{% endmacro %}
+
+{% macro data_badge(item) %}
+  {% if item.data_status != 'na' %}
+    <span class="badge data-{{ item.data_status }}">{{ DATA_STATUSES[item.data_status] }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro kind_badge(item) %}
+  {% if item.kind == 'recycling' %}<span class="badge kind-recycling">Recycling</span>{% endif %}
+{% endmacro %}
+
+{% macro show_tabs(endpoint, show, new_label) %}
+  <div class="tabs">
+    <a href="{{ url_for(endpoint, show='new') }}" {% if show == 'new' %}class="on"{% endif %}>{{ new_label }}</a>
+    <a href="{{ url_for(endpoint, show='all') }}" {% if show == 'all' %}class="on"{% endif %}>All</a>
+    <a href="{{ url_for(endpoint, show='hidden') }}" {% if show == 'hidden' %}class="on"{% endif %}>Hidden</a>
+  </div>
+{% endmacro %}

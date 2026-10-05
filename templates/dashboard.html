@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Dashboard</h1>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('item_new') }}">+ Add stock item</a>
+    <a class="btn" href="{{ url_for('item_new', kind='recycling') }}">+ Add recycling item</a>
+  </div>
+</div>
+
+<div class="stats">
+  <a class="stat" href="{{ url_for('items', kind='stock', status='active') }}">
+    <span class="num">{{ stats.stock.n }}</span>
+    <span class="lbl">Stock items on hand</span>
+    <span class="sub">{{ stats.stock.v|money }} paid</span>
+  </a>
+  <a class="stat" href="{{ url_for('items', kind='recycling', status='active') }}">
+    <span class="num">{{ stats.recycling }}</span>
+    <span class="lbl">Recycling items on hand</span>
+  </a>
+  <a class="stat {% if to_wipe %}alert{% endif %}" href="{{ url_for('items', data='pending') }}">
+    <span class="num">{{ to_wipe|length }}{% if to_wipe|length == 50 %}+{% endif %}</span>
+    <span class="lbl">Waiting to be wiped</span>
+  </a>
+  <a class="stat" href="{{ url_for('sales') }}">
+    <span class="num">{{ stats.sold.n }}</span>
+    <span class="lbl">Items sold</span>
+    <span class="sub">{{ stats.sold.revenue|money }} taken · {{ stats.sold.profit|money }} profit</span>
+  </a>
+  <a class="stat" href="{{ url_for('ebay_sales') }}">
+    <span class="num">{{ stats.unlinked_sales }}</span>
+    <span class="lbl">eBay sales to link</span>
+  </a>
+</div>
+
+<div class="cols">
+  <section class="card">
+    <h2>Waiting to be wiped</h2>
+    {% if to_wipe %}
+    <table>
+      {% for item in to_wipe %}
+      <tr>
+        <td class="mono"><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.tag }}</a></td>
+        <td>{{ item.name }} {{ m.kind_badge(item) }}</td>
+        <td class="right">
+          <form method="post" action="{{ url_for('item_wipe', item_id=item.id) }}">
+            <input type="hidden" name="next" value="{{ url_for('dashboard') }}">
+            <button class="btn small" name="state" value="wiped">Mark wiped</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">Nothing is waiting to be wiped.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Recently added</h2>
+    {% if recent %}
+    <table>
+      {% for item in recent %}
+      <tr>
+        <td class="mono"><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.tag }}</a></td>
+        <td>{{ item.name }} {{ m.kind_badge(item) }}</td>
+        <td class="right">{{ m.status_badge(item) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="muted">No items yet. Add one, or pull your purchases in from
+      <a href="{{ url_for('ebay_purchases') }}">eBay</a>.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

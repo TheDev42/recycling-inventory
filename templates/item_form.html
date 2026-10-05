@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% set no_scan_focus = true %}
+{% set editing = item.id is defined and item.id %}
+{% block title %}{{ 'Edit ' ~ item.tag if editing else 'Add item' }}{% endblock %}
+
+{% macro id_row(type, value) %}
+<div class="id-row">
+  <select name="id_type">
+    {% for t in ID_TYPES %}<option {% if t == type %}selected{% endif %}>{{ t }}</option>{% endfor %}
+  </select>
+  <input name="id_value" value="{{ value }}" placeholder="Type or scan" autocomplete="off">
+  <button type="button" class="btn small remove-id" title="Remove">×</button>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <h1>{% if editing %}Edit {{ item.tag }}{% else %}Add item{% endif %}</h1>
+</div>
+
+{% if purchase %}
+<div class="flash info">From eBay order {{ purchase.order_id }} — bought from {{ purchase.seller }} on
+  {{ purchase.purchased_at|day }}.</div>
+{% endif %}
+
+<form method="post" class="card form">
+  {% if purchase %}<input type="hidden" name="ebay_purchase_id" value="{{ purchase.id }}">{% endif %}
+
+  <label class="wide">Name
+    <input name="name" value="{{ item.name or '' }}" required {% if not purchase %}autofocus{% endif %}>
+  </label>
+
+  <label>Type
+    <select name="kind" id="kind">
+      {% for key, label in KINDS.items() %}
+      <option value="{{ key }}" {% if item.kind == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Status
+    {% if item.status == 'sold' %}
+    <input value="Sold" disabled>
+    {% else %}
+    <select name="status">
+      {% for key, label in STATUSES.items() if key != 'sold' %}
+      <option value="{{ key }}" {% if item.status == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+  </label>
+
+  <label>Price paid ({{ cfg.currency }})
+    <input name="purchase_price" inputmode="decimal"
+           value="{{ item.purchase_price|price_input }}">
+  </label>
+  <label>Date acquired
+    <input type="date" name="purchase_date" value="{{ item.purchase_date or '' }}">
+  </label>
+  <label>Source
+    <input name="source" value="{{ item.source or '' }}" list="sources" placeholder="eBay, walk-in, collection…">
+    <datalist id="sources"><option>eBay</option><option>Walk-in</option><option>Collection</option><option>Trade-in</option></datalist>
+  </label>
+  <label>Supplier / seller
+    <input name="supplier" value="{{ item.supplier or '' }}">
+  </label>
+
+  <label>Category
+    <input name="category" value="{{ item.category or '' }}" placeholder="Laptop, phone, router…">
+  </label>
+  <label>Condition
+    <input name="condition" value="{{ item.condition or '' }}" list="conditions">
+    <datalist id="conditions"><option>New</option><option>Working</option><option>Needs repair</option><option>For parts</option><option>Untested</option></datalist>
+  </label>
+  <label>Storage location
+    <input name="location" value="{{ item.location or '' }}" placeholder="Shelf, bin…">
+  </label>
+
+  <fieldset class="wide">
+    <legend>Serial numbers, MAC addresses and other IDs</legend>
+    <div id="id-rows">
+      {% for ident in identifiers %}{{ id_row(ident.type, ident.value) }}{% endfor %}
+      {% if not identifiers %}{{ id_row('Serial number', '') }}{% endif %}
+    </div>
+    <button type="button" class="btn small" id="add-id">+ Add another ID</button>
+    <template id="id-template">{{ id_row('Serial number', '') }}</template>
+  </fieldset>
+
+  <fieldset class="wide">
+    <legend>Data storage</legend>
+    <div class="inline">
+      <label>Storage state
+        <select name="data_status">
+          {% for key, label in DATA_STATUSES.items() %}
+          <option value="{{ key }}" {% if item.data_status == key %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>How it was wiped
+        <input name="wipe_method" value="{{ item.wipe_method or '' }}" list="wipe-methods">
+      </label>
+    </div>
+  </fieldset>
+  <datalist id="wipe-methods">
+    <option>Secure erase</option><option>Software overwrite</option><option>Factory reset</option>
+    <option>Drive removed</option><option>Shredded</option>
+  </datalist>
+
+  <label class="wide">Notes
+    <textarea name="notes" rows="3">{{ item.notes or '' }}</textarea>
+  </label>
+
+  <div class="wide actions">
+    <button class="btn primary">{{ 'Save changes' if editing else 'Add item' }}</button>
+    <a class="btn" href="{{ url_for('item_detail', item_id=item.id) if editing else url_for('items') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

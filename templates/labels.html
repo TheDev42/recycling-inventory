@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Labels</title>
+  <style>
+    @page { size: {{ cfg.label_w }}mm {{ cfg.label_h }}mm; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
+    .label {
+      width: {{ cfg.label_w }}mm; height: {{ cfg.label_h }}mm; padding: 1.5mm 2mm;
+      display: flex; flex-direction: column; overflow: hidden;
+      page-break-after: always; break-after: page;
+    }
+    .label:last-child { page-break-after: auto; break-after: auto; }
+    .top { display: flex; justify-content: space-between; gap: 2mm; font-size: 6pt; white-space: nowrap; }
+    .flag { font-weight: bold; text-transform: uppercase; }
+    .name { font-size: 8pt; font-weight: bold; line-height: 1.1; max-height: 2.2em; overflow: hidden; }
+    .info { font-size: 6pt; line-height: 1.15; overflow: hidden; flex: 0 1 auto; }
+    .info span { white-space: nowrap; margin-right: 1.5mm; }
+    .barcode { flex: 1 1 0; min-height: 6mm; margin-top: 0.5mm; }
+    .barcode svg { display: block; width: 100%; height: 100%; }
+    .tag { font-family: "Courier New", monospace; font-size: 7pt; font-weight: bold; text-align: center; letter-spacing: 0.5mm; }
+    @media screen {
+      body { background: #ddd; padding: 16px; }
+      .label { background: #fff; margin: 0 0 12px; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+      .bar { font-size: 14px; margin-bottom: 16px; }
+      .bar button { font-size: 14px; padding: 6px 14px; }
+    }
+    @media print { .bar { display: none; } }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button onclick="window.print()">Print</button>
+    {{ entries|length }} label(s) at {{ cfg.label_w }} × {{ cfg.label_h }} mm — change the size in Settings.
+    In the print dialog set margins to “None” and scale to 100%.
+  </div>
+  {% for e in entries %}
+  <div class="label">
+    <div class="top">
+      <span>{{ cfg.business_name }}</span>
+      <span class="flag">
+        {%- if e.item.kind == 'recycling' %}Recycling{% endif %}
+        {%- if e.item.data_status == 'wiped' %} · Wiped {{ e.item.wiped_at|day }}
+        {%- elif e.item.data_status == 'destroyed' %} · Storage destroyed
+        {%- elif e.item.data_status == 'pending' %} · NOT WIPED{% endif -%}
+      </span>
+    </div>
+    <div class="name">{{ e.item.name }}</div>
+    <div class="info">
+      {% for ident in e.identifiers %}<span>{{ {'Serial number': 'S/N', 'MAC address': 'MAC', 'Model number': 'Model'}.get(ident.type, ident.type) }}: {{ ident.value }}</span> {% endfor %}
+      {% if e.item.purchase_date %}<span>In: {{ e.item.purchase_date|day }}</span>{% endif %}
+      {% if e.item.condition %}<span>{{ e.item.condition }}</span>{% endif %}
+      {% if e.item.location %}<span>Loc: {{ e.item.location }}</span>{% endif %}
+    </div>
+    <div class="barcode">{{ e.barcode }}</div>
+    <div class="tag">{{ e.item.tag }}</div>
+  </div>
+  {% endfor %}
+  <script>window.addEventListener("load", function () { window.print(); });</script>
+</body>
+</html>
