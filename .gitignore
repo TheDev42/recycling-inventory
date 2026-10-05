@@ -1,8 +1,4 @@
-.venv/
-__pycache__/
-*.pyc
-# The database holds your inventory and your eBay keys/tokens
-inventory.db
+# The database lives here (data/inventory.db). It holds your stock and your eBay keys: keep it out of git.
 data/
+node_modules/
 .env
-inventory.db-journal

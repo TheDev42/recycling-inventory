@@ -1,12 +1,30 @@
 services:
+  # One-off helper: creates ./data if needed and makes it writable by the app's user (uid 1000) before the app starts.
+  # It runs, exits, and stays stopped; that is normal.
+  data-perms:
+    image: alpine:3
+    command: sh -c "chown -R 1000:1000 /data || true"
+    volumes:
+      - ./data:/data
+    restart: "no"
+
   inventory:
     build: .
-    restart: unless-stopped
+    container_name: recycling-inventory
+    depends_on:
+      data-perms:
+        condition: service_completed_successfully
     ports:
-      - "${PORT:-5000}:5000"
-    environment:
-      # Set APP_PASSWORD in a .env file next to this one to require a password to open the site.
-      APP_PASSWORD: ${APP_PASSWORD:-}
+      - "8080:3000"   # host port 8080 -> the app's port 3000 inside the container
     volumes:
-      # The database (inventory + eBay keys) lives here on the server; back this folder up.
-      - ./data:/data
+      - ./data:/data   # the database lives here: the "data" folder next to this file (data/inventory.db)
+    environment:
+      TZ: Europe/London
+      # Shown in the sidebar
+      COMPANY_NAME: "Recycling Inventory"
+      # The letter(s) in front of the label numbers: R00001, R00002...
+      BARCODE_PREFIX: "R"
+      # Optional: uncomment to require a login (browser basic-auth prompt)
+      # AUTH_USER: admin
+      # AUTH_PASS: change-me
+    restart: unless-stopped

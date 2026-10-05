@@ -1,18 +1,23 @@
-FROM python:3.12-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    INVENTORY_DB=/data/inventory.db
+FROM node:24-slim
 
 WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=3000 \
+    DATA_DIR=/data
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt gunicorn
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-COPY . .
+COPY server ./server
+COPY public ./public
+
+RUN mkdir -p /data && chown -R node:node /data /app
+USER node
 
 VOLUME /data
-EXPOSE 5000
+EXPOSE 3000
 
-# One worker: the app is a single-business tool backed by SQLite; threads handle concurrent requests.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "--disable-warning=ExperimentalWarning", "server/index.js"]

@@ -1,13 +1,16 @@
 # Recycling Inventory
 
-Inventory tracking for a repair and electronics recycling business. Runs in Docker and
-keeps everything in a single file (`data/inventory.db`).
+Barcode inventory for a repair and electronics recycling business. It runs in Docker and keeps everything in one file
+(`data/inventory.db`). The look and the scanner behaviour follow Inventory Control 2.
 
-- Stock and recycling items, each with a price paid, serial numbers, MAC addresses and other IDs
-- Pull your eBay purchases in and turn them into inventory items
-- Pull your eBay sales in and link each one to the item that was sold, with fees and profit
-- Record which items have had their storage wiped, and see what is still waiting
-- Print barcode labels; scan a label (or a serial number) to bring the item up
+- **Repairs** — things you buy to fix and sell (motherboards and the like), with the price paid, model, serial number,
+  MAC address, fault and repair notes.
+- **eBay purchases** — pull in what you bought on eBay and turn each purchase into an inventory item.
+- **Labels** — every item gets a number (`R00001`, `R00002`…) and a printable barcode label. Scanning it opens the item.
+- **WEEE collections** — log each pick-up and what came in with it. Anything that holds data has to be recorded as
+  wiped or destroyed before it can be sold or recycled, and every wipe goes in a log you can export.
+- **Sales** — mark an item as sold by hand, or match it to an eBay sale so the price and fees fill themselves in.
+  Profit is worked out per item.
 
 ## Running it
 
@@ -15,61 +18,99 @@ On the server, from inside this folder:
 
     docker compose up -d --build
 
-The site is then at `http://<server-address>:5000`. The database is kept in the `data` folder
-next to `docker-compose.yml`, so it survives restarts and rebuilds — back that folder up.
+The site is then at `http://<server-address>:8080`. To use a different port, change the `8080` in `docker-compose.yml`.
 
-The site has no user accounts. To require a password, create a file called `.env` next to
-`docker-compose.yml` before starting it:
+The database is kept in the `data` folder next to `docker-compose.yml`, so it survives restarts and rebuilds.
 
-    APP_PASSWORD=choose-something-long
-    PORT=5000
+- Update after changing the code: `docker compose up -d --build`
+- Logs: `docker compose logs -f`
 
-The browser will then ask for a username and password; any username works. The password is sent
-unencrypted unless the server puts https in front of the site, so keep it on your own network
-or behind a reverse proxy with https.
+### Password
 
-To update after changing the code: `docker compose up -d --build`. To see logs:
-`docker compose logs -f`.
+The site has no user accounts. To make the browser ask for a login, uncomment `AUTH_USER` and `AUTH_PASS` in
+`docker-compose.yml` and start it again. The password travels unencrypted unless the server puts https in front of
+the site, so keep it on your own network or behind an https reverse proxy. Do not expose it straight to the internet.
 
 ## Using the barcode scanner
 
-The scanner works like a keyboard, so there is nothing to set up. On any page, scan a label and
-the item opens. Scanning a serial number or MAC address that is recorded against an item works too.
+A USB or Bluetooth scanner works like a keyboard, so there is nothing to set up. On any page, scan and the item opens.
+It looks for, in order: the label's barcode, an item's serial number, a MAC address, then a drive's serial number.
 
-When adding an item, click into an ID box and scan the serial number; the cursor moves to a new
-row ready for the next one.
+- On the **Add item** page, a scan goes into the serial number box (or the MAC address box if it is a MAC address).
+- You can also click into any box and scan straight into it — a drive's serial number, for example.
+- A code that is not in the system offers to add a new item with that serial number.
 
 ## Labels
 
-Open an item and press **Print label**, or tick several items in the inventory list and press
-**Print labels for ticked items**. Set your label size (in mm) under **Settings** — the default is
-62 × 29 mm. In the print dialog choose your label printer, margins "None", scale 100%.
+Open an item and press **Print label**, or tick several in the inventory and press **Print labels**. A collection has
+**Print all labels**. The labels open as a PDF, one label per page.
+
+Set your label size in millimetres under **Settings** (62 × 29 mm to start with). In the print dialog choose the label
+printer, no margins, 100% scale.
+
+The label shows the name, model, serial number, MAC address and the barcode. The price paid is on the item's page when
+you scan it; it is not printed, because the label stays on the item when you sell it.
+
+## Repairs: buying, fixing, selling
+
+1. **eBay purchases → Fetch from eBay** pulls in the last 90 days. For each one, **Add to inventory** creates the item
+   straight away, or **Add with details** opens the form first. The price paid is the item price plus postage.
+   Things that are not stock (tools, packaging) can be hidden.
+2. Print the label. When the board arrives, scan it, press **Edit** and scan in its serial number and MAC address.
+3. Move it through **In stock → In repair → Ready to sell → Listed for sale** with the Status list, and keep repair
+   notes on its page. Parts you buy for it go in **Repair cost**.
+4. When it sells on eBay: **Sold on eBay → Fetch from eBay**, then **Match to an item**. The site suggests the items
+   whose name and model look like the listing; you can also search, or scan the label of the item you are packing.
+   The sale price and eBay fees are filled in, and you add what the postage cost you.
+5. Sold somewhere else? Open the item and press **Mark as sold**.
+
+**Sales & profit** lists everything sold: price, fees, postage, cost and profit.
+
+## WEEE collections and data wiping
+
+1. **WEEE collections → New collection**: who it came from and when.
+2. On the collection's page, add what you picked up. "How many" adds several identical items at once, each with its own
+   label. Leave **Holds data** ticked for anything with a drive or built-in storage.
+3. **Data wiping** lists everything still holding data. Either press **Mark wiped** there, or open the item to record
+   each drive's serial number and wipe them one by one. Choose how it was cleared (overwrite, secure erase, factory
+   reset, degaussed, physically destroyed).
+4. Until that is done, the item cannot be marked sold or recycled.
+
+**Export wipe log (CSV)** on the Data wiping page gives you the full record: what was cleared, how, when, and which
+collection it came from.
 
 ## Connecting eBay
 
 You need a free eBay developer account. This is a one-off job.
 
 1. Sign up at <https://developer.ebay.com> and wait for the account to be approved.
-2. Under **Application Keys**, create a **Production** keyset. eBay will ask you to either
-   subscribe to or opt out of "marketplace account deletion" notifications first — for a tool
-   that only reads your own account you can apply for the exemption.
-3. Next to the production App ID click **User Tokens → Get a Token from eBay via Your
-   Application**, and add an eBay redirect URL (RuName). Fill in the form; the "auth accepted
-   URL" can be any https address you like, such as your own website.
-4. In this app go to **Settings** and enter the **App ID**, **Cert ID** and **RuName**, then save.
-5. Press **Sign in to eBay** and agree. eBay then sends you to your "auth accepted URL" — copy the
-   whole address of that page from the browser's address bar, paste it into the box on the
-   Settings page and press **Finish connecting**. The address is only valid for a few minutes.
+2. Under **Application Keys**, create a **Production** keyset. eBay asks you to either subscribe to or opt out of
+   "marketplace account deletion" notifications first — for a tool that only reads your own account you can apply for
+   the exemption.
+3. Next to the production App ID click **User Tokens → Get a Token from eBay via Your Application**, and add an eBay
+   redirect URL (RuName). The "auth accepted URL" must be an https address; any page you like will do, such as your
+   own website.
+4. In this site go to **Settings** and enter the **App ID**, **Cert ID** and **RuName**, then **Save keys**.
+5. Press **Sign in to eBay** and agree. eBay sends you to your "auth accepted URL" — copy the whole address of that
+   page from the browser's address bar, paste it into the box on the Settings page and press **Finish connecting**.
+   The address only works for a few minutes.
 
-After that, **eBay purchases → Fetch from eBay** and **eBay sold → Fetch from eBay** pull your
-orders in. eBay only provides purchases from the last 90 days, so fetch at least that often.
+If this site is reachable over https, you can set the "auth accepted URL" to `https://<your-site>/ebay/callback`
+instead and step 5 finishes by itself.
+
+The site only ever reads from eBay: your purchases (Trading API `GetOrders`) and your sales (Sell Fulfillment API).
+It cannot list, buy or change anything. eBay hands out the last 90 days, so fetch at least that often.
 
 ## Backups
 
-Copy `data/inventory.db` somewhere safe regularly — it is the whole system. It also contains your
-eBay keys, so treat it as private.
+**Backup** in the sidebar downloads a copy of the database. It is the whole system — stock, wipe log, sales and your
+eBay keys — so keep copies somewhere safe and treat them as private.
 
-## Notes
+## Running it without Docker
 
-The site is reachable by anything that can reach the server's port, so set `APP_PASSWORD` and do
-not expose it straight to the internet.
+Needs Node.js 22.13 or newer.
+
+    npm install
+    npm start
+
+The site is then at <http://localhost:3000>.
