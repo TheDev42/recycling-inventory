@@ -17,6 +17,23 @@ fs.mkdirSync(dataDir, { recursive: true });
 export const DATA_DIR = dataDir;
 export const DB_PATH = path.join(dataDir, 'inventory.db');
 
+// The first version of this system (the Python one) kept its database under the same name with a different layout.
+// If that is what is in the data folder, it is moved aside — kept as a backup — and its contents are copied into a
+// fresh database further down, once the tables exist.
+const LEGACY_PATH = path.join(dataDir, 'inventory-old-version.db');
+function setLegacyAside() {
+  if (!fs.existsSync(DB_PATH)) return false;
+  const old = new DatabaseSync(DB_PATH);
+  const cols = old.prepare('PRAGMA table_info(items)').all().map((c) => c.name);
+  old.close();
+  if (!cols.includes('tag') || cols.includes('barcode')) return false;
+  if (fs.existsSync(LEGACY_PATH)) throw new Error(`Both an old-version database and ${LEGACY_PATH} exist. Move one of them out of the data folder`);
+  fs.renameSync(DB_PATH, LEGACY_PATH);
+  for (const ext of ['-wal', '-shm']) fs.rmSync(DB_PATH + ext, { force: true });
+  return true;
+}
+const hasLegacy = setLegacyAside();
+
 export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
 
@@ -157,6 +174,70 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_item ON events(item_id);
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 `);
+
+/* ---------- one-off import from the old version ---------- */
+// Items keep the barcode that is already printed on their labels. Serial numbers and MAC addresses move from the old
+// "identifiers" list into their own boxes; any other identifier (IMEI, asset tag…) is kept in the item's notes.
+function importLegacy() {
+  const code = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const STATUS = { in_repair: 'repair', scrapped: 'recycled', listed: 'listed', sold: 'sold', recycled: 'recycled' };
+  db.exec(`ATTACH DATABASE '${LEGACY_PATH.replace(/'/g, "''")}' AS old`);
+  db.exec('BEGIN');
+  try {
+    // eBay keys and the long-lived sign-in carry over; the short-lived token is fetched again when first needed
+    db.exec(`INSERT OR IGNORE INTO settings SELECT key, value FROM old.settings
+               WHERE key NOT IN ('ebay_access_token', 'ebay_access_expires', 'secret_key');
+             INSERT INTO ebay_purchases (id, order_id, ebay_item_id, transaction_id, title, price, currency, quantity, seller, purchased_at, hidden)
+               SELECT id, order_id, ebay_item_id, transaction_id, title, price, currency, quantity, seller, purchased_at, hidden FROM old.ebay_purchases;
+             INSERT INTO ebay_sales (id, order_id, line_item_id, ebay_item_id, title, price, fee, currency, quantity, buyer, sold_at, hidden)
+               SELECT id, order_id, line_item_id, ebay_item_id, title, price, fee, currency, quantity, buyer, sold_at, hidden FROM old.ebay_sales;`);
+
+    const identifiers = db.prepare('SELECT * FROM old.identifiers ORDER BY id').all();
+    const addItem = db.prepare(`INSERT INTO items (id, barcode, kind, status, name, category, model, serial, serial_norm, mac, mac_norm, condition, location, notes,
+        purchase_price, purchase_date, source, supplier, ebay_purchase_id, data_bearing, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const addDrive = db.prepare("INSERT INTO drives (item_id, kind, status, method, wiped_at, created_at) VALUES (?, 'Built-in storage', ?, ?, ?, ?)");
+    const items = db.prepare('SELECT * FROM old.items ORDER BY id').all();
+    for (const i of items) {
+      const mine = identifiers.filter((d) => d.item_id === i.id);
+      const of = (type) => mine.filter((d) => d.type === type).map((d) => d.value);
+      const [serial = null, ...moreSerials] = of('Serial number');
+      const [model = null, ...moreModels] = of('Model number');
+      const macs = of('MAC address').map((m) => {
+        const hex = code(m);
+        return /^[0-9A-F]{12}$/.test(hex) ? hex.match(/.{2}/g).join(':') : m;
+      });
+      const extra = [
+        ...moreSerials.map((v) => `Serial number: ${v}`), ...moreModels.map((v) => `Model number: ${v}`),
+        ...mine.filter((d) => !['Serial number', 'Model number', 'MAC address'].includes(d.type)).map((d) => `${d.type}: ${d.value}`),
+      ];
+      const row = [i.id, i.tag || `OLD${i.id}`, i.kind === 'recycling' ? 'weee' : 'repair', STATUS[i.status] || 'in_stock', i.name, i.category, model,
+        serial, serial ? code(serial) : null, macs.length ? macs.join(', ') : null, macs.length ? ` ${macs.map(code).join(' ')} ` : null,
+        i.condition, i.location, [i.notes, ...extra].filter(Boolean).join('\n') || null,
+        i.purchase_price, i.purchase_date, i.source, i.supplier, i.ebay_purchase_id, i.data_status && i.data_status !== 'na' ? 1 : 0, i.created_at, i.updated_at];
+      addItem.run(...row.map((v) => v ?? null));
+      // already wiped: one entry in the wipe log saying how and when
+      if (i.data_status === 'wiped' || i.data_status === 'destroyed') {
+        addDrive.run(i.id, i.data_status, i.wipe_method || (i.data_status === 'destroyed' ? 'Physically destroyed' : 'Recorded in the old system'),
+          (i.wiped_at || i.updated_at || '').slice(0, 10) || null, i.created_at);
+      }
+    }
+    db.exec(`INSERT INTO sales (id, item_id, sale_price, fees, postage, sold_at, platform, buyer, notes, prev_status, ebay_sale_id, created_at)
+               SELECT id, item_id, sale_price, fees, postage, substr(sold_at, 1, 10), platform, buyer, notes, 'in_stock', ebay_sale_id, COALESCE(sold_at, datetime('now'))
+               FROM old.sales WHERE item_id IN (SELECT id FROM items);`);
+    db.exec('COMMIT');
+    db.exec('DETACH DATABASE old');
+    console.log(`Imported ${items.length} items from the old version. The old database is kept as ${LEGACY_PATH}`);
+  } catch (err) {
+    // put everything back exactly as it was, so nothing is lost and the next start tries again
+    db.exec('ROLLBACK');
+    db.close();
+    for (const ext of ['', '-wal', '-shm']) fs.rmSync(DB_PATH + ext, { force: true });
+    fs.renameSync(LEGACY_PATH, DB_PATH);
+    throw new Error(`Could not import the old version's database (it has been left untouched): ${err.message}`);
+  }
+}
+if (hasLegacy) importLegacy();
 
 const norm = (params) =>
   params.map((v) => (v === undefined ? null : typeof v === 'boolean' ? (v ? 1 : 0) : v));
