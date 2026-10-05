@@ -15,7 +15,7 @@ services:
       data-perms:
         condition: service_completed_successfully
     ports:
-      - "8080:3000"   # host port 8080 -> the app's port 3000 inside the container
+      - "80:3000"   # host port 8080 -> the app's port 3000 inside the container
     volumes:
       - ./data:/data   # the database lives here: the "data" folder next to this file (data/inventory.db)
     environment:
