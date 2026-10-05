@@ -3,4 +3,6 @@ __pycache__/
 *.pyc
 # The database holds your inventory and your eBay keys/tokens
 inventory.db
+data/
+.env
 inventory.db-journal

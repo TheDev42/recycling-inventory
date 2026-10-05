@@ -1,0 +1,12 @@
+services:
+  inventory:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5000}:5000"
+    environment:
+      # Set APP_PASSWORD in a .env file next to this one to require a password to open the site.
+      APP_PASSWORD: ${APP_PASSWORD:-}
+    volumes:
+      # The database (inventory + eBay keys) lives here on the server; back this folder up.
+      - ./data:/data

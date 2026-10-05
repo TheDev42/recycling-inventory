@@ -1,7 +1,7 @@
 # Recycling Inventory
 
-Inventory tracking for a repair and electronics recycling business. Runs on your own PC and
-keeps everything in a single file (`inventory.db`).
+Inventory tracking for a repair and electronics recycling business. Runs in Docker and
+keeps everything in a single file (`data/inventory.db`).
 
 - Stock and recycling items, each with a price paid, serial numbers, MAC addresses and other IDs
 - Pull your eBay purchases in and turn them into inventory items
@@ -9,12 +9,27 @@ keeps everything in a single file (`inventory.db`).
 - Record which items have had their storage wiped, and see what is still waiting
 - Print barcode labels; scan a label (or a serial number) to bring the item up
 
-## Starting it
+## Running it
 
-Double-click `run.bat`. The first run installs what it needs, then the site opens at
-<http://127.0.0.1:5000>. Leave the black window open while you use it.
+On the server, from inside this folder:
 
-Needs Python 3.10 or newer.
+    docker compose up -d --build
+
+The site is then at `http://<server-address>:5000`. The database is kept in the `data` folder
+next to `docker-compose.yml`, so it survives restarts and rebuilds — back that folder up.
+
+The site has no user accounts. To require a password, create a file called `.env` next to
+`docker-compose.yml` before starting it:
+
+    APP_PASSWORD=choose-something-long
+    PORT=5000
+
+The browser will then ask for a username and password; any username works. The password is sent
+unencrypted unless the server puts https in front of the site, so keep it on your own network
+or behind a reverse proxy with https.
+
+To update after changing the code: `docker compose up -d --build`. To see logs:
+`docker compose logs -f`.
 
 ## Using the barcode scanner
 
@@ -51,9 +66,10 @@ orders in. eBay only provides purchases from the last 90 days, so fetch at least
 
 ## Backups
 
-Copy `inventory.db` somewhere safe regularly — it is the whole system. It also contains your
+Copy `data/inventory.db` somewhere safe regularly — it is the whole system. It also contains your
 eBay keys, so treat it as private.
 
 ## Notes
 
-The site only listens on this PC. It has no login, so do not expose it to the internet.
+The site is reachable by anything that can reach the server's port, so set `APP_PASSWORD` and do
+not expose it straight to the internet.

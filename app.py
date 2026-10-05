@@ -1,4 +1,5 @@
 import csv
+import hmac
 import io
 import os
 import re
@@ -47,6 +48,22 @@ with app.app_context():
     if not db.get_setting("secret_key"):
         db.set_setting("secret_key", secrets.token_hex(32))
     app.secret_key = db.get_setting("secret_key")
+
+
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+
+@app.before_request
+def require_password():
+    """Optional site-wide password (any username), for when the site runs on a shared server."""
+    if not APP_PASSWORD:
+        return None
+    auth = request.authorization
+    if auth and auth.password and hmac.compare_digest(auth.password.encode(), APP_PASSWORD.encode()):
+        return None
+    return Response(
+        "Password required.", 401, {"WWW-Authenticate": 'Basic realm="Inventory", charset="UTF-8"'}
+    )
 
 
 # ---------- helpers ----------
